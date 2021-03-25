@@ -14,7 +14,7 @@ DEPS = multicore/core.hpp multicore/control.hpp
 OBJ = multicore/core.o multicore/control.o
 
 all: main.o $(OBJ)
-	$(CC) main.o $(OBJ) -o main
+	$(CC) main.o $(OBJ) -o main.x
 
 main.o: main.cpp
 	$(CC) $(CFLAGS) -c main.cpp

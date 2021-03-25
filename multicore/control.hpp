@@ -8,7 +8,10 @@ public:
 	control();
 	~control();
 
-	void control_module();
+	void control_module(instr);
+	bool legal_instruction(instr);
+
+	bool is_free = true;
 
 private:
 	
