@@ -4,9 +4,11 @@ variable_compile_options = -Wfloat-equal -Wconversion -Wunused-parameter -Wredun
 func_compile_options = -Wreturn-type -Wunused-function -Wswitch-default  -Winit-self
 
 
+INCLUDE := ./include
 
-CC = g++
-CFLAGS = -O3 -g $(general_compile_options) #$(style_compile_options) $(variable_compile_options) $(func_compile_options)
+
+CC 		:= g++
+CFLAGS 	:= -O3 -g $(INCLUDE) $(general_compile_options) #$(style_compile_options) $(variable_compile_options) $(func_compile_options)
 
 DEPS = multicore/core.hpp multicore/control.hpp
 OBJ = multicore/core.o multicore/control.o
