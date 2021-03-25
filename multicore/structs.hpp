@@ -9,7 +9,7 @@
 using namespace std;
 
 /*
-    we use an unordered hash map to store each lock entry
+    we use a global unordered hash map to store each lock entry
     this provides us with O(1) store/access
 
     the map will have the following layout:
@@ -25,12 +25,13 @@ std::unordered_map<void* , struct lock_entry> lock_map;
 typedef uint32_t thread_t;
 
 // a struct for the metadata of an instruction
-struct instr {
+typedef struct {
     int instr_id; 
     int thread_id; 
-    int timestamp; // this timestamp is init iff this instr 
+    int timestamp; 
+    void *program_counter;
     void *pointer_to_resource; 
-};
+} instr;
 
 struct lock_entry {
     //void *resource;
@@ -46,16 +47,14 @@ struct lock_entry {
 
 // instr.pointer_to_resource lies in (pointer_resource_in lock_entry + bytes) 
 
-
 /*
 
 General Idea:
 
-LOCK ACQ <-  //get a timestamp
-
-some set of instr in the critcal sections 
-
-LOCK RELEASE <-
-
+LOCK ACQ <- // get a timestamp, get ptr of acq
+.
+.
+.
+LOCK RELEASE <- // ptr + bytes
 
 */

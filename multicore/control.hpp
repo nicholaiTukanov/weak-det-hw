@@ -1,11 +1,11 @@
 /*
 	Control Module Class
 */
-
+#inclide "core.hpp"
 
 class control {
 public:
-	control();
+	control(core *all_cores);
 	~control();
 
 	void control_module(instr);

@@ -1,10 +1,11 @@
 #include "core.hpp"
 
-core::core(int core_id) {
+core::core() {
 
 }
 
 core::~core() {
+
 
 }
 
@@ -17,4 +18,3 @@ void core::execute_instr(instr I) {
     // before returning, release the lock (i.e. update lock table)
     // set is_free to true
 }
-
