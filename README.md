@@ -1,13 +1,17 @@
 # An Exploration of Weak Determinism in Hardware
-An exploration of hardware level weak determinism.
+A project on the exploration of hardware level weak determinism for Professor Brandon Lucia's 18-742 course from Carnegie Mellon University.
+
+**Note: This simulator is a work in progress. As we write more of the code, we will expand the documentation on these sections.**
 
 ### Introduction
 -------------------------------------------------
-We present a custom x86 simulator that is meant to implement weak determinism in hardware. We plan to use this simulator in conjuction with Pin, Intel's binary instrumentation tool.
+The majority of the DMT systems (i.e. Kendo, CoreDet, and LazyDet) are fully software-based solutions. Since they are software-based, these DMT solutions provide programmers with flexible frameworks that can be easily accessed and understood. However, by implementing the solution fully in software, the trade off is that the performance of the system degrades. For this project, we plan on exploring the implications of implementing a hardware-based DMT system that uses weak determinism. Our end goal is to describe the implementation details for a weak hardware-based DMT system, and to show whether or not a weak hardware-based DMT system will provide a performance improvement over state of the art software DMT systems such as LazyDet.
+
+We attempt our hardware weak DMT system by implementing a custom x86 simulator written mostly in C++. For the rest of this document, we provide high-level details on our simulator, our methodology for ensuring weak determinism, and the implemention details on our methodology.
 
 ### Simulator Details
 -------------------------------------------------
-Our simulator emulates a multicore system where each core will process some instruction stream that is determined by a scheduling algorithm. Each core will only run an instruction that has been approved by a control module.
+Our simulator emulates a multicore x86 system where each core will process some instruction stream that has been provided by a scheduling algorithm. Before a core executes an instruction, it must be approved by a control module. This control module is where we deterministically order accesses to critical sections of a program. 
 
 ### Hardware Weak Determinism
 -------------------------------------------------
@@ -57,3 +61,16 @@ Here we provide the toolchain/language versions/system data that we used for run
 * C++ version 201402L
 * WSL with Ubuntu 20.04
 * Architecture: Zen2 (AMD Ryzen 5 3600x)
+
+
+### Authors
+-------------------------------------------------
+* Nicholai Tukanov (nicholaiTukanov) 
+* Swarali Patil (Swarali20)
+* Atharv Sathe (atharvsathe)
+
+With assistance from 
+* Professor Brandon Lucia
+* Professor Joseph Devietti
+* Kiwan Maeng
+
