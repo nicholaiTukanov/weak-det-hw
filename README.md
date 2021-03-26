@@ -1,7 +1,7 @@
 # An Exploration of Weak Determinism in Hardware
 A project on the exploration of hardware level weak determinism for Professor Brandon Lucia's 18-742 course from Carnegie Mellon University.
 
-**Note: This simulator is a work in progress. As we write more of the code, we will expand the documentation on these sections.**
+**Note: This simulator is a work in progress, so the documentation for this project has not been fully completed.**
 
 ### Introduction
 -------------------------------------------------
