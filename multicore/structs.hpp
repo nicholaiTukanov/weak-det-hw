@@ -35,6 +35,7 @@ typedef struct {
 
 struct lock_entry {
     //void *resource;
+    void *pointer_to_resource;
     size_t bytes;
     thread_t thread_id;
 };

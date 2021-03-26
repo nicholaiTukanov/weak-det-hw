@@ -11,24 +11,48 @@ Our simulator emulates a multicore system where each core will process some inst
 
 ### Hardware Weak Determinism
 -------------------------------------------------
-To ensure that our simulator has weak determinism, we must deterministically order the accesses to the critical sections of a given program.
+To ensure that our simulator has weak determinism, we must deterministically order the accesses to the critical sections of a given program. Since our goal is to implement it in hardware, we attempt to achieve this by creating a global lock table in hardware that stores lock entries each time some instruction of some thread accesses a critical section of a program. We discuss the implementation details of our procedure for determining the order of accesses in the next section.
 
-Our idea is to have a scheduling algorithm that will pack metadata into each instruction. This metadata will be stored into a typedefined instruction struct. Once the scheduling algorithm has created the metadata for the instruction, it will pass the instruction and metadata to the control module. The control module will then ensure that we have a deterministic order on the accesses to some critical section.
 
-The control module deterministically orders the accesses to a critical section by checking the metadata of the instruction. Once the control module reads the metadata of the instruction, it will use the information provided to check a global lock table that is implemented in hardware.
+### Implementation Details
+-------------------------------------------------
 
-Here the control module checks the global lock table to ensure that the instruction is not accessing a critical section. If the instruction is not accessing a critical section, then the instruction is allowed to be executed by some core that is determined by the scheduling algorithm. If the instruction is accessing a critical section of a program, then the control module will check to see if another thread is currently in the critical section. This checking happens by searching the global lock table to see if there exists an entry for that given critical section. The search of the global lock table is implemented by checking if the pointer of the instruction is exclusively in the range of a critical section (i.e. the pointer of the instruction is not in the range of the pointer to the start of a critical section plus the size of the critical section). If the instruction is in the range of a critical section that is NOT in the global lock table, then an entry is added to the lock table and the control module allows the executation of the instruction. If the instruction is in the range of a critical section that is in the global lock table, then we pass NOPs to the cores until we see that thread in the critical section has released the lock. 
+Our idea is to have a scheduling algorithm that will pack metadata into each instruction. This metadata will be stored into a typedefined instruction struct. 
+
+```
+// a struct for the metadata of an instruction
+typedef struct {
+    int instr_id; 
+    int thread_id; 
+    int timestamp; 
+    void *program_counter;
+    void *pointer_to_resource; 
+} instr;
+```
+
+Once the scheduling algorithm has created the metadata for the instruction, it will pass the instruction and metadata to the control module. The control module will then ensure that we have a deterministic order on the accesses to some critical section.
+
+The control module deterministically orders the accesses to a critical section by checking the metadata of the instruction. Specifically, we examine the `timestamp` and `pointer_to_resource` that is stored in the `instr struct`. Once the control module reads the metadata of the instruction, it will use the information provided to check a global lock table that is implemented in hardware.
+
+Here the control module checks the global lock table to ensure that the instruction is not accessing a critical section. If the instruction is NOT accessing a critical section, then the instruction is allowed to be executed by some core that is determined by the scheduling algorithm. If the instruction is accessing a critical section of a program, then the control module will check to see if another thread is currently in the critical section. This checking happens by searching the hardware global lock table to see if there exists an entry for that given critical section. The search of the global lock table is implemented by checking if the `pointer_to_resource` of the instruction is exclusively in the range of a critical section (i.e. the `pointer_to_resource` of the instruction is in the range of the pointer to the start of a critical section plus the size of the critical section). If the instruction is in the range of a critical section that is NOT in the global lock table, then an lock entry is added to the lock table and the control module allows the executation of the instruction. 
+
+```
+struct lock_entry {
+    void *pointer_to_resource;
+    size_t bytes;
+    thread_t thread_id;
+};
+```
+
+If the instruction is in the range of a critical section that is in the global lock table, then we pass NOPs to the cores until we see that thread in the critical section has released the lock. We provide a flowchart to showcase the logic that the control module follows:
 
 <img title="Flow Chart for the logic of the Control Module" src="/images/weak_det_flowchart.png">
 
 
-<!-- After the scheduling algorithm has packed each instruction with the respective metadata, the instruction stream is passed to a control module. The control module is the authority that will check whether or not the instruction is allowed to be executed on a core that is selected by the scheduling algorithm. The control module determines if an instruction can legally execute by ensuring that the instruction is not a part of some critical section that is being executed by some thread.  -->
-
-
-
-
 ### Enviornment Info
 -------------------------------------------------
+Here we provide the toolchain/language versions/system data that we used for running our custom simulator.
+
 * GCC/G++ version 9.3.0
 * C++ version 201402L
 * WSL with Ubuntu 20.04
