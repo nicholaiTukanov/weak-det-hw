@@ -69,7 +69,7 @@ Here we provide the toolchain/language versions/system data that we used for run
 * Atharv Sathe (atharvsathe)
 
 With assistance from 
-* Professor Brandon Lucia
-* Professor Joseph Devietti
+* Professor Brandon Lucia (blucia0a)
+* Professor Joseph Devietti (devietti)
 * Kiwan Maeng
 
