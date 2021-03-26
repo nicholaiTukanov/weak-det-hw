@@ -24,7 +24,6 @@ To ensure that our simulator has weak determinism, we must deterministically ord
 Our idea is to have a scheduling algorithm that will pack metadata into each instruction. This metadata will be stored into a typedefined instruction struct. 
 
 ```
-// a struct for the metadata of an instruction
 typedef struct {
     int instr_id; 
     int thread_id; 
