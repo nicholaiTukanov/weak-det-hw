@@ -7,7 +7,7 @@ A project on the exploration of hardware level weak determinism for Professor Br
 -------------------------------------------------
 The majority of the DMT systems (i.e. Kendo, CoreDet, and LazyDet) are fully software-based solutions. Since they are software-based, these DMT solutions provide programmers with flexible frameworks that can be easily accessed and understood. However, by implementing the solution fully in software, the trade off is that the performance of the system degrades. For this project, we plan on exploring the implications of implementing a hardware-based DMT system that uses weak determinism. Our end goal is to describe the implementation details for a weak hardware-based DMT system, and to show whether or not a weak hardware-based DMT system will provide a performance improvement over state of the art software DMT systems such as LazyDet.
 
-We attempt our hardware weak DMT system by implementing a custom x86 simulator written mostly in C++. For the rest of this document, we provide high-level details on our simulator, our methodology for ensuring weak determinism, and the implemention details on our methodology.
+We attempt our hardware weak DMT system by implementing a custom x86 simulator written mostly in C++. For the rest of this document, we provide high-level details on our simulator, our methodology for ensuring weak determinism, and the implementation details on our methodology.
 
 ### Simulator Details
 -------------------------------------------------
@@ -69,7 +69,7 @@ Here we provide the toolchain/language versions/system data that we used for run
 * Atharv Sathe (atharvsathe)
 
 With assistance from 
-* Professor Brandon Lucia
-* Professor Joseph Devietti
+* Professor Brandon Lucia (blucia0a)
+* Professor Joseph Devietti (devietti)
 * Kiwan Maeng
 
