@@ -101,24 +101,12 @@ std::map< pthread_mutex_t *, std::vector<THREADID>> lock_table;
 std::map< pthread_mutex_t *, std::pair < THREADID, bool> > lock_availability;
 
 
-
-
-/*
-
-    This data structure represents our hardware table
-
-    Each access to the structure is serialized. (global table)
-
-    The only time a thread should be accessing this struct is
-    1. adding itself to the queue
-    2. removing itself from the queue
-
-*/
-
+// comparator for sorting lock queues
 bool compare_func(THREADID tid_1, THREADID tid_2) {
     return tid_1 < tid_2;
 }
 
+// debugging function
 void print_queue(std::vector<THREADID> lock_queue) {
 
     int queue_size = lock_queue.size();
@@ -135,6 +123,7 @@ void print_queue(std::vector<THREADID> lock_queue) {
     
 }
 
+// debugging function
 void print_table()
 {
     cout << endl;
@@ -149,6 +138,7 @@ void print_table()
     cout << endl;
 }
 
+// debugging function
 void print_locks_avail()
 {
     for (auto pair : lock_availability)
@@ -164,8 +154,6 @@ void print_locks_avail()
 
 /*
     this function replaces pthread_mutex_lock
-
-    ...
 */
 int PTHREAD_LOCK(pthread_mutex_t *__mutex)
 {
@@ -219,25 +207,14 @@ int PTHREAD_LOCK(pthread_mutex_t *__mutex)
 
     }
 
-    
     // print_table();
 
     PIN_ReleaseLock(&table_lock);
-    // //cout << "thread " << tid << " has released table_lock" << endl;
+
 
     // wait for a group of threads
 
-    // long time_count = 0;
-    // while(time_count < 1) {
-    //     time_count++;
-    // }
-
     PIN_Sleep(1);
-
-    // possible ideas:
-    // have a quanta for while loop
-    // if quanta is hit, then have the thread holding the lock release it
-
 
     // scheduler goes here
     while(true) {
@@ -289,9 +266,7 @@ int PTHREAD_LOCK(pthread_mutex_t *__mutex)
 
 
 /* 
-    this function replaces pthread_mutex_unlock
-
-    ...
+    this function replaces pthread_mutex_unloc
 */
 int PTHREAD_UNLOCK(pthread_mutex_t *__mutex) 
 {
