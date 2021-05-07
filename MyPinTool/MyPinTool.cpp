@@ -91,12 +91,7 @@ PIN_LOCK check_availability_lock;
 std::map< pthread_mutex_t *, std::vector<THREADID>> lock_table;
 
 /* 
-    this helps us know if a lock can be grabbed or not
-    this structure tells the scheduler whether a thread can be let through
-    or not.
-
-    lock_availability[pthread_mutex_t *] == true, then some thread holds that lock
-    otherwise, the lock is free to grab.
+    this helps us know if a lock can be grabbed or not.
 */
 std::map< pthread_mutex_t *, std::pair < THREADID, bool> > lock_availability;
 
