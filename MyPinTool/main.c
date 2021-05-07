@@ -9,25 +9,29 @@ int counter = 0;
 
 int main()
 {
-   pthread_t thread1, thread2, thread3, thread4;
-   int rc1 = pthread_create( &thread1, NULL, &functionC, NULL);
-   int rc2 = pthread_create( &thread2, NULL, &functionC, NULL);
-   int rc3 = pthread_create( &thread3, NULL, &functionC, NULL);
-   int rc4 = pthread_create( &thread4, NULL, &functionC, NULL);
+   // pthread_t thread1, thread2, thread3, thread4, thread5, thread6, thread7, thread8;
 
-   // pthread_join( thread1, NULL);
-   // pthread_join( thread2, NULL);
-   // pthread_join( thread3, NULL);
-   // pthread_join( thread4, NULL);
+   int N = 100000;
+   pthread_t *threads = malloc(sizeof(pthread_t) * N);
+
+   for (int i=0; i<N; i++) {
+      pthread_t thread = threads[i];
+      pthread_create(&thread, NULL, &functionC, 0);
+
+      pthread_join(thread, NULL);
+   }
+
+   printf("FINAL COUNT: %d\n", counter);
    return 0;
 }
 
-void *functionC()
+void *functionC(void *vargp)
 {
+   
    pthread_mutex_lock( &mutex1 );
+   
    counter++;
-   // printf("Thread id: %ld ", pthread_self());
-   printf("Counter value: %d\n",counter);
+
    pthread_mutex_unlock( &mutex1 );
 
    return NULL;

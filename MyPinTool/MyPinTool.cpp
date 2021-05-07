@@ -29,9 +29,6 @@ KNOB<string> KnobOutputFile(KNOB_MODE_WRITEONCE, "pintool",
 FILE * out;
 PIN_LOCK pinLock;
 
-PIN_LOCK check_avail; // serialize access to lock_available vector
-PIN_LOCK update_table; // serialize access to time_queue vector
-
 INSTLIB::ICOUNT icount;
 int total_threads = 0;
 
@@ -43,71 +40,6 @@ int total_threads = 0;
 #include <iterator>
 #include <algorithm>
 
-typedef struct {
-    THREADID threadid;
-    UINT64 time;
-} time_struct;
-
-std::vector< void * > prg_locks;
-
-// lock = # of times lock was seen
-std::map< void *, int > lock_counter;
-
-// lock = threads in queue
-std::map< void *, std::vector<time_struct> > time_queue;
-
-// lock availability
-std::map< void *, bool > lock_available;
-
-// thread to lock
-std::map< THREADID, void *> thread_to_lock;
-
-void print_instruction_count() {
-    for (int i = 0; i < total_threads; i++) {
-        // cout << "T:" << i << " " << icount.Count(i) << "\t";
-    }
-    // cout << endl;
-}
-
-/*
-    comparision function
-
-    the queues are ordered by the weak-det definition in kendo
-
-    the thread that comes first in the queue statisfies the following:
-    1. the thread is the oldest
-    2. the thread has the lowest thread id
-
-*/
-bool compare_time_struct(time_struct i1, time_struct i2) {
-    if (i1.time == i2.time)
-        return i1.threadid < i2.threadid;
-    else
-        return i1.time > i2.time;
-}
-
-void print_time_struct(time_struct thread_ts) {
-    // cout << "THREAD ID = " << thread_ts.threadid << "\tINSTR COUNT = " << thread_ts.time << endl;
-}
-
-THREADID get_thread_to_be_released(void *lock) {
-
-
-    PIN_GetLock(&update_table, 0);
-    // get the element that is at the front of the queue for the given lock
-    time_struct thread_time_struct = time_queue[lock][0];
-
-    // print_time_struct(thread_time_struct);
-
-    // this thread is the one that is allowed
-    THREADID threadid = thread_time_struct.threadid;
-
-    // delete the thread time struct off the queue since the thread will not acquire the lock
-    time_queue[lock].erase(time_queue[lock].begin());
-
-    PIN_ReleaseLock(&update_table);
-    return threadid;
-}
 
 /////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////
@@ -135,162 +67,254 @@ VOID ThreadFini(THREADID threadid, const CONTEXT *ctxt, INT32 code, VOID *v)
     PIN_ReleaseLock(&pinLock);
 }
 
-// called before pthread_mutex_lock
-VOID BeforeLOCK(void *lock, THREADID threadid )
-{
 
-    PIN_GetLock(&pinLock, threadid);
-    fprintf(out, "pthread_mutex_lock: thread %d attempts to grab lock %p \n", threadid, lock);
-    fflush(out);
-    PIN_ReleaseLock(&pinLock);
+#include <pthread.h>
+#include <list>
 
 
-    // table lookup, grab table lock
-    PIN_GetLock(&update_table, threadid);
-    // cout << "thread " << threadid << " has grabbed update_table" << endl;
-    bool lock_in_map = (time_queue.find(lock) != time_queue.end());
-    // cout << "thread " << threadid << " is about to release update_table" << endl;
-    PIN_ReleaseLock(&update_table);
+PIN_LOCK table_lock;
+PIN_LOCK check_availability_lock;
+
+
+/* 
+    software implementation of hardware lock table.
+    table uses ptr pthread_mutex_t to index into a vector of THREADIDs.
+    the vector of THREADIDs represents a priorty queue.
+    for now, priority is determined by the THREADID.
+    this can be changed in the future but this is what gives us determinism.
+    in other words, weak deteminism can be guarenteed by how THREADIDs 
+    are sorted in the queue to grab the lock.
+    henceforth, even though we don't know the order in which threads will
+    attempt to grab a lock, but if we had the set of threads grabbing the lock
+    then we can determine the exact order the threads will grab the lock.
+*/
+std::map< pthread_mutex_t *, std::vector<THREADID>> lock_table;
+
+/* 
+    this helps us know if a lock can be grabbed or not
+    this structure tells the scheduler whether a thread can be let through
+    or not.
+
+    lock_availability[pthread_mutex_t *] == true, then some thread holds that lock
+    otherwise, the lock is free to grab.
+*/
+std::map< pthread_mutex_t *, std::pair < THREADID, bool> > lock_availability;
+
+
+
+
+/*
+
+    This data structure represents our hardware table
+
+    Each access to the structure is serialized. (global table)
+
+    The only time a thread should be accessing this struct is
+    1. adding itself to the queue
+    2. removing itself from the queue
+
+*/
+
+bool compare_func(THREADID tid_1, THREADID tid_2) {
+    return tid_1 < tid_2;
+}
+
+void print_queue(std::vector<THREADID> lock_queue) {
+
+    int queue_size = lock_queue.size();
+    if (queue_size > 0)
+    {
+        cout << " [ " << lock_queue[0];
+
+        for (int i = 1; i < queue_size; i++)
+            cout << ", " << lock_queue[i];
+        cout << " ];";
+    }
+    else 
+        cout << " [];";
     
+}
 
-    // lock is in map
-    if (lock_in_map) {
+void print_table()
+{
+    cout << endl;
 
-        // cout << "lock exists in table" << endl;
-        // lock_counter[lock] += 1;
-
-        // table entry, grab table lock
-        PIN_GetLock(&update_table, threadid);
-        time_struct new_struct;
-        new_struct.threadid = threadid;
-        new_struct.time = icount.Count(threadid);
-        time_queue[lock].push_back(new_struct);
-        std::sort(time_queue[lock].begin(), time_queue[lock].end(), compare_time_struct);
-        PIN_ReleaseLock(&update_table);
+    for (auto queue : lock_table)
+    {
+        cout << queue.first << " : ";
+        print_queue((queue.second));
+        cout << endl;
     }
 
+    cout << endl;
+}
 
-    // lock is NOT in map
-    else {
-
-        // cout << "lock doesn't exists in table" << endl;
-        // lock_counter.insert(std::pair<void *, int>(lock, 1));
-
-        // first time we have seen the lock, thus add it to lock available map
-        // grab lock since lookup is made
-        PIN_GetLock(&check_avail, threadid);
-        lock_available.insert(std::pair<void *, bool>(lock, true));
-        PIN_ReleaseLock(&check_avail);
-
-
-        // entry will be added, grab lock
-        PIN_GetLock(&update_table, threadid);
-        time_struct new_struct;
-        new_struct.threadid = threadid;
-        new_struct.time = icount.Count(threadid);
-
-        std::vector<time_struct> new_queue;
-        new_queue.push_back(new_struct);
-
-        time_queue.insert(std::pair<void *, std::vector<time_struct> >(lock, new_queue));
-        PIN_ReleaseLock(&update_table);
-
-        return;
-    }
-
-    thread_to_lock.insert(std::pair<THREADID, void *>(threadid, lock));
-
-    // all threads will wait at the spin lock if the lock is NOT available
-    // this code will be run by many threads
-    while(true){
-        
-        // make sure that only 1 thread checks the 
-        PIN_GetLock(&check_avail, threadid);
-        bool lock_released = lock_available[lock];
-        
-        PIN_ReleaseLock(&check_avail);
-        
-        // lock has been released
-        // all threads waiting for the lock check if they can be released
-        if(lock_released) {
-            
-            THREADID thread_to_be_released = get_thread_to_be_released(lock);
-            
-            // cout << "Current Thread " << threadid << endl;
-
-            // only break the thread that is allowed to pass through
-            if (threadid == thread_to_be_released)
-                break;
+void print_locks_avail()
+{
+    for (auto pair : lock_availability)
+    {
+        if (pair.second.second)
+            cout << "lock " << pair.first << " is available" << endl;
+        else {
+            cout << "lock " << pair.first << " is NOT available and is held by thread " << pair.second.first << endl;
         }
     }
-
 }
 
-// called after pthread_mutex_lock returns
-VOID AfterLOCK(int ret_val, THREADID threadid )
+
+/*
+    this function replaces pthread_mutex_lock
+
+    ...
+*/
+int PTHREAD_LOCK(pthread_mutex_t *__mutex)
 {
-    PIN_GetLock(&pinLock, threadid);
-    fprintf(out, "pthread_mutex_lock: thread %d returned %d \n", threadid, ret_val);
-    fflush(out);
-    PIN_ReleaseLock(&pinLock);
 
-    PIN_GetLock(&check_avail, threadid);
-    void* lock = thread_to_lock[threadid];
-    thread_to_lock.erase(threadid);
-    lock_available[lock] = false; // since we have returned from pthread_mutex_lock, we know that the lock is NOT available
-    PIN_ReleaseLock(&check_avail);
+    THREADID tid = PIN_ThreadId();
+
+    // we are about to do table look up
+    // we must serialize the access
+    PIN_GetLock(&table_lock, 0);
+
+    // cout << "thread " << tid << " has called PTHREAD_LOCK" << endl;
     
-    //thread_to_lock.erase(threadid);
+    // cout << "thread " << tid << " has grabbed table_lock" << endl;
 
-    // while(true) {
+    // lock already exists in the map
+    // thread must add themselves to the queue
+    if (lock_table.find(__mutex) != lock_table.end())
+    {
+        // cout << "lock " << __mutex << " does exists in table" << endl;
 
+        // grab respective queue
+        std::vector<THREADID> *locks_queue = &lock_table[__mutex];
 
+        // add new thread to queue
+        locks_queue->push_back(tid);
 
-    //     // if lock was released
-    //     if (lock_available[lock] == true) {
-    //         //// cout << "Lock status: " << lock_available[lock] << " ";
-    //         lock_available[lock] = false; // thread grabs lock
-    //         // cout << "Lock: " << lock << " Thread: " << threadid << " Instructions: " << time_queue[lock].at(0).time << " aquired  lock" << endl;
-    //         time_queue[lock].erase(time_queue[lock].begin());
-    //         break;
-    //     }
+        // resort queue
+        // locks_queue->sort(compare_func);
+        std::sort(locks_queue->begin(), locks_queue->end(), compare_func);
+
+    }
+
+    // no queue exists
+    // create one and add the thread grabbing the lock to it
+    else 
+    {
+
+        // cout << "lock " << __mutex << " does NOT exists in table" << endl;
+
+        // create new queue for unseen lock
+        std::vector<THREADID> new_queue;
+
+        // add current thread to new queue
+        new_queue.push_back(tid);
+
+        // add queue to lock table
+        lock_table.insert(std::pair< pthread_mutex_t *, std::vector<THREADID> > (__mutex, new_queue));
+
+        // have a seperate data structure that tells us when a lock is available or not
+        lock_availability.insert(std::pair<pthread_mutex_t*, std::pair<THREADID, bool>> (__mutex, std::pair<THREADID, bool>(tid,true)) );
+
+    }
+
+    
+    // print_table();
+
+    PIN_ReleaseLock(&table_lock);
+    // //cout << "thread " << tid << " has released table_lock" << endl;
+
+    // wait for a group of threads
+
+    // long time_count = 0;
+    // while(time_count < 1) {
+    //     time_count++;
     // }
 
+    PIN_Sleep(1);
 
-    
+    // possible ideas:
+    // have a quanta for while loop
+    // if quanta is hit, then have the thread holding the lock release it
+
+
+    // scheduler goes here
+    while(true) {
+
+        PIN_GetLock(&check_availability_lock, 0);
+
+        // cout << "thread " << tid << " is waiting to grab lock " << __mutex << endl;
+
+        bool lock_avail = lock_availability[__mutex].second;
+
+        if (lock_avail)
+        {
+            PIN_GetLock(&table_lock, 0);
+
+            // lookup
+            THREADID tid_to_release = *(lock_table[__mutex].begin());
+
+            if (tid == tid_to_release)
+            {
+                // cout << "thread " << tid << " is trying to be released\n";
+                lock_table[__mutex].erase(lock_table[__mutex].begin());
+                
+                lock_availability[__mutex].first = tid;
+                lock_availability[__mutex].second = false;
+
+                // print_locks_avail();
+                // print_table();
+
+                PIN_ReleaseLock(&check_availability_lock);
+                PIN_ReleaseLock(&table_lock);
+                return 0;
+                // break;
+                
+            }
+
+            PIN_ReleaseLock(&table_lock);
+        }
+
+
+        PIN_ReleaseLock(&check_availability_lock);
+        PIN_Yield();
+    }
+
+
+    PIN_ReleaseLock(&table_lock);
+    PIN_ReleaseLock(&check_availability_lock);
+    return 0;
 }
 
-// called before pthread_mutex_unlock
-VOID BeforeUNLOCK(void *lock, THREADID threadid )
+
+/* 
+    this function replaces pthread_mutex_unlock
+
+    ...
+*/
+int PTHREAD_UNLOCK(pthread_mutex_t *__mutex) 
 {
-    PIN_GetLock(&pinLock, threadid);
-    fprintf(out, "pthread_mutex_unlock: thread %d releases lock %p \n", threadid, lock);
-    fflush(out);
-    PIN_ReleaseLock(&pinLock);
 
-    PIN_GetLock(&check_avail, threadid);
-    lock_available[lock] = true;
-    PIN_ReleaseLock(&check_avail);
+    // THREADID tid = PIN_ThreadId();
+
+    PIN_GetLock(&check_availability_lock, 0);
+
+    // cout << "thread " << tid << " has called PTHREAD_UNLOCK" << endl;
+
+    lock_availability[__mutex].first = -1;
+    lock_availability[__mutex].second = true;
+    // cout << "thread " << tid << " has released lock " << __mutex << endl;
+
+    // print_locks_avail();
+
+    PIN_ReleaseLock(&check_availability_lock);
+
+
+    return 0;
 }
 
-// called after pthread_mutex_unlock returns
-VOID AfterUNLOCK(int ret_val, THREADID threadid )
-{
-    PIN_GetLock(&pinLock, threadid);
-    fprintf(out, "pthread_mutex_unlock: thread %d returned %d \n", threadid, ret_val);
-    fflush(out);
-    PIN_ReleaseLock(&pinLock);
 
-    
-    //void* lock = thread_to_lock[threadid];
-    //thread_to_lock.erase(threadid);
-
-
-    // cout  << " Thread: " << threadid << " Released lock" << endl;
-
-    
-    
-}
 
 
 
@@ -317,13 +341,7 @@ VOID ImageLoad(IMG img, VOID *)
     {
         RTN_Open(rtn1);
         
-        RTN_InsertCall(rtn1, IPOINT_BEFORE, AFUNPTR(BeforeLOCK),
-                       IARG_FUNCARG_ENTRYPOINT_VALUE, 0,
-                       IARG_THREAD_ID, IARG_END);
-
-        RTN_InsertCall(rtn1, IPOINT_AFTER, AFUNPTR(AfterLOCK),
-                       IARG_FUNCRET_EXITPOINT_VALUE, 
-                       IARG_THREAD_ID, IARG_END);
+        RTN_Replace(rtn1, AFUNPTR(PTHREAD_LOCK));
 
         RTN_Close(rtn1);
     }
@@ -332,13 +350,7 @@ VOID ImageLoad(IMG img, VOID *)
     {
         RTN_Open(rtn2);
         
-        RTN_InsertCall(rtn2, IPOINT_BEFORE, AFUNPTR(BeforeUNLOCK),
-                       IARG_FUNCARG_ENTRYPOINT_VALUE, 0,
-                       IARG_THREAD_ID, IARG_END);
-
-        RTN_InsertCall(rtn2, IPOINT_AFTER, AFUNPTR(AfterUNLOCK),
-                       IARG_FUNCRET_EXITPOINT_VALUE, 
-                       IARG_THREAD_ID, IARG_END);
+        RTN_Replace(rtn2, AFUNPTR(PTHREAD_UNLOCK));
 
         RTN_Close(rtn2);
     }
@@ -348,16 +360,7 @@ VOID ImageLoad(IMG img, VOID *)
 // This routine is executed once at the end.
 VOID Fini(INT32 code, VOID *v)
 {
-
-    // print map out
-    //std::ap<int, int>::iterator itr;
-  //   for (auto itr = lock_counter.begin(); itr != lock_counter.end(); ++itr) {
-    //    std::// cout << '\t' << itr->first
-    //         << '\t' << itr->second << '\n';
-   // }
-
-
-    fclose(out);
+    // fclose(out);
 }
 
 /* ===================================================================== */
@@ -379,6 +382,8 @@ int main(INT32 argc, CHAR **argv)
 {
     // Initialize the pin lock
     PIN_InitLock(&pinLock);
+    PIN_InitLock(&table_lock);
+    PIN_InitLock(&check_availability_lock);
     
     // Initialize pin
     if (PIN_Init(argc, argv)) return Usage();
@@ -386,14 +391,14 @@ int main(INT32 argc, CHAR **argv)
     
     // file that the output will be stored int
     out = fopen(KnobOutputFile.Value().c_str(), "w");
-    icount.Activate(INSTLIB::ICOUNT::ModeNormal);
+    // icount.Activate(INSTLIB::ICOUNT::ModeNormal);
 
     // Register ImageLoad to be called when each image is loaded.
     IMG_AddInstrumentFunction(ImageLoad, 0);
 
     // Register Analysis routines to be called when a thread begins/ends
-    PIN_AddThreadStartFunction(ThreadStart, 0);
-    PIN_AddThreadFiniFunction(ThreadFini, 0);
+    // PIN_AddThreadStartFunction(ThreadStart, 0);
+    // PIN_AddThreadFiniFunction(ThreadFini, 0);
 
     // Register Fini to be called when the application exits
     PIN_AddFiniFunction(Fini, 0);
